@@ -1,0 +1,33 @@
+# ssh 
+# server project dir
+# server virtualenv dir
+env:
+    project: foobar
+    user: root
+    webserver_software: nginx # or apache
+
+# types are for the kind of server environment it is
+#   - shell (default, for the common use-case)
+#   - dotcloud (for a dotcloud deployment)
+#   - heroku (for a heroku deployment)
+#   - epio (for an ep.io deployment)
+#   - gondor (for a gondor.io deployment)
+# stage is for the step of deployment you're on
+#   - prod (default, production live servers)
+#   - staging
+#   - dev
+# os is the operating system of the machine
+#   - ubuntu (default)
+#   - debian
+#   - fedora
+#   - rhel
+#   - osx
+# port is implied to be 22 unless otherwise specified (for ssh)
+# DO NOT place your local machine here. Run at your own risk.
+servers:
+    www:
+        ip: 192.168.1.1
+
+roles:
+    app:
+        - www
