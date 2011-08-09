@@ -5,8 +5,11 @@ env:
     project: foobar
     user: root
     webserver_software: nginx # or apache
+    db_software: postgresql # or mysql
+    path: /home/%(user)s/public_html/%(project)s
+    live_url: http://foobar.com
 
-# types are for the kind of server environment it is
+# deploy_type is for the kind of server environment it is
 #   - shell (default, for the common use-case)
 #   - dotcloud (for a dotcloud deployment)
 #   - heroku (for a heroku deployment)
@@ -19,15 +22,21 @@ env:
 # os is the operating system of the machine
 #   - ubuntu (default)
 #   - debian
+#   - centos
 #   - fedora
 #   - rhel
 #   - osx
 # port is implied to be 22 unless otherwise specified (for ssh)
-# DO NOT place your local machine here. Run at your own risk.
+# WARNING: DO NOT place your local machine here. Run at your own risk.
 servers:
     www:
-        ip: 192.168.1.1
+        ip: 1.2.3.4
+        os: ubuntu
 
 roles:
     app:
+        - www
+    db:
+        - www
+    static:
         - www
