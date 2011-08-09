@@ -1,6 +1,9 @@
-# ssh 
-# server project dir
-# server virtualenv dir
+# TODO: configuration for:
+#   - ssh 
+#   - server virtualenv dir
+#   - configuration software
+#   - process control software
+#   - monitoring software
 env:
     project: foobar
     user: root
@@ -28,6 +31,7 @@ env:
 #   - osx
 # port is implied to be 22 unless otherwise specified (for ssh)
 # WARNING: DO NOT place your local machine here. Run at your own risk.
+# TODO: configure individual role, like for db (master, slave)
 servers:
     www:
         ip: 1.2.3.4

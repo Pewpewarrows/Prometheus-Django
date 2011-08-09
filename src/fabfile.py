@@ -22,7 +22,7 @@ env.config_file = 'fabconfig.yaml'
 try:
     _config = load_yaml(open(env.config_file, 'r'))
 except IOError:
-    print red('The required fabric configuration file could not be found: %s', env.config_file)
+    print red('The required fabric configuration file could not be found: %s' % env.config_file)
     abort()
 
 servers = _config['servers']
@@ -35,16 +35,12 @@ env.webserver_software = _config['env']['webserver_software']
 env.db_software = _config['env']['db_software']
 env.live_url = _config['env']['live_url']
 
-# TODO: make these configurable
 try:
     env.path = _config['env']['path'] % env
 except:
-    print red('The required app install path could not be parsed: %s', _config['env']['path'])
+    print red('The required app install path could not be parsed: %s' % _config['env']['path'])
     abort()
 
-print env
-
-# with cd(''):
 # with lcd(''):
 # with path(''):
 # with settings(warn_only=True):
@@ -61,7 +57,6 @@ print env
 #
 # @hosts()
 # @roles()
-# @task()
 # @runs_once()
 # @with_settings(warn_only=True)
 #
@@ -70,12 +65,13 @@ print env
 
 # Helper Functions
 
-# TODO: fix these to use env.roles && env.roledefs
+# TODO: fix these to use env.roles && env.roledefs ???
 
 # $ fab server:www command
+@task
 def server(name):
     if name not in servers:
-        error('Could not find the current attempted server in config: %s', name)
+        error('Could not find the current attempted server in config: %s' % name)
         abort()
 
     env.hosts = env.hosts or []
@@ -88,10 +84,10 @@ def server(name):
     env.hosts.append('%s@%s:%s' % (env.user, servers[name]['ip'], port))
 
 # $ fab role:app command
+@task
 def role(name):
     if name not in roles:
-        error('Could not find the current attempted role in config: %s', name)
-        abort()
+        error('Could not find the current attempted role in config: %s' % name)
 
     env.role = name
 
@@ -99,6 +95,7 @@ def role(name):
         server(server_name)
 
 def refresh_env():
+    # TODO: is there a way to get around having to put this at the top of every task?
     server = None
     for s in servers:
         if s['ip'] == env.host:
@@ -106,8 +103,7 @@ def refresh_env():
             break
 
     if server is None:
-        error('Could not find the current attempted server in config: %s', env.host)
-        abort()
+        error('Could not find the current attempted server in config: %s' % env.host)
 
     if 'stage' in server:
         env.stage = server['stage']
@@ -132,11 +128,14 @@ def refresh_env():
 def info(txt):
     print cyan('* ' + txt)
 
+def instruct(txt):
+    print magenta('*' + txt)
+
 def warn(txt):
     print yellow('* ' + txt)
 
 def error(txt):
-    print red('!!! ' + txt)
+    abort(red('* ' + txt))
 
 def sad():
     print red(r'''
@@ -190,7 +189,7 @@ def happy():
     print green('Success, nothing broke this time! Huzzah!')
 
 def unavailable():
-    warn('This task is not yet available. Skipping.')
+    abort(yellow('* This task is not yet available. Skipping.'))
 
 # Tasks
 
@@ -230,6 +229,7 @@ def check():
 # first-time server setup
 @task
 def setup_server():
+    refresh_env()
     # TODO: allow customization for internal os package repo
     create_user(True, True)
     update_server()
@@ -249,6 +249,7 @@ def setup_server():
 # create user/group, setup ssh keys
 @task
 def create_user(prompt_for_username=False, sudoer=False):
+    refresh_env()
     unavailable()
 
     if prompt_for_username:
@@ -263,11 +264,13 @@ def create_user(prompt_for_username=False, sudoer=False):
 # secure server
 @task
 def secure_server():
+    refresh_env()
     unavailable()
 
 # update os
 @task
 def update_server():
+    refresh_env()
     if env.os == 'ubuntu':
         sudo('apt-get update')
         sudo('apt-get safe-upgrade')
@@ -275,6 +278,7 @@ def update_server():
 # install os packages
 @task
 def setup_general_server():
+    refresh_env()
     if env.os == 'ubuntu':
         sudo('apt-get remove -y apache2 apache2-mpm-prefork apache2-utils')
         sudo('apt-get install -y build-essential python-dev python-setuptools')
@@ -287,6 +291,7 @@ def setup_general_server():
 
 @task
 def setup_app_server():
+    refresh_env()
     if env.webserver_software == 'nginx':
         if env.os == 'ubuntu':
             sudo('apt-get install -y nginx')
@@ -303,6 +308,7 @@ def setup_app_server():
 
 @task
 def setup_db_server():
+    refresh_env()
     unavailable()
 
     if env.db_software == 'postgresql':
@@ -314,6 +320,7 @@ def setup_db_server():
 
 @task
 def setup_static_server():
+    refresh_env()
     if env.os == 'ubuntu':
         sudo('apt-get install -y nginx')
 
@@ -322,11 +329,13 @@ def setup_static_server():
 # setup global configs
 @task
 def setup_server_configs():
+    refresh_env()
     unavailable()
 
 # startup server software
 @task
 def startup_server():
+    refresh_env()
     unavailable()
 
     sudo('/etc/init.d/supervisord start')
@@ -344,6 +353,7 @@ def startup_server():
 # create project ready for deploy
 @task
 def setup_new_project():
+    refresh_env()
     create_user()
     run('mkdir -p %s' % env.path)
 
@@ -384,6 +394,7 @@ def deploy():
     symlink_release()
     migrate_db()
     reload_webserver()
+    check()
 
 # deploy version
 @task
@@ -464,6 +475,7 @@ def push_uploads():
 # reload webserver
 @task
 def reload_webserver():
+    refresh_env()
     if env.role != 'app':
         return
 
