@@ -2,7 +2,7 @@
 # for many ideas in this file.
 
 from __future__ import with_statement
-from datetime.datetime import now
+import datetime
 
 from fabric.api import *
 from fabric.colors import *
@@ -25,22 +25,24 @@ except IOError:
     print red('The required fabric configuration file could not be found: %s', env.config_file)
     abort()
 
-servers = _config.servers
-roles = _config.roles
+servers = _config['servers']
+roles = _config['roles']
 
-env.datetime = now().strftime('%Y-%m-%d-%H%M%S')
-env.project = _config.env.project
-env.user = _config.env.user
-env.webserver_software = _config.env.webserver_software
-env.db_software = _config.env.db_software
-env.live_url = _config.env.live_url
+env.datetime = datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S')
+env.project = _config['env']['project']
+env.user = _config['env']['user']
+env.webserver_software = _config['env']['webserver_software']
+env.db_software = _config['env']['db_software']
+env.live_url = _config['env']['live_url']
 
 # TODO: make these configurable
 try:
-    env.path = _config.env.path % env
+    env.path = _config['env']['path'] % env
 except:
-    print red('The required app install path could not be parsed: %s', _config.env.path)
+    print red('The required app install path could not be parsed: %s', _config['env']['path'])
     abort()
+
+print env
 
 # with cd(''):
 # with lcd(''):
@@ -392,6 +394,7 @@ def deploy_version():
 # archive project
 @task
 def archive_project():
+    local('mkdir -p /tmp/fabric')
     local('git archive --format=tar master | gzip > /tmp/fabric/%(project)s-%(datetime)s.tar.gz' % env)
 
 # upload archive
@@ -399,7 +402,9 @@ def archive_project():
 def upload_project():
     run('mkdir -p %(path)s/releases/%(datetime)s' % env)
     put('/tmp/fabric/%(project)-%(datetime)s.tar.gz' % env, '%(path)s/releases' % env)
-    run('cd %(path)s/releases/%(datetime)s && tar zxf ../%(project)s-%(datetime)s.tar.gz' % env)
+
+    with cd('%(path)s/releases/%(datetime)s' % env):
+        run('tar zxf ../%(project)s-%(datetime)s.tar.gz .' % env)
 
     run('rm %(path)s/releases/%(project)-%(datetime)s.tar.gz' % env)
     local('rm /tmp/fabric/%(project)s-%(datetime)s.tar.gz' % env)
