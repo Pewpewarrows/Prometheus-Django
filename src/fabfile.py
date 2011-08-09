@@ -3,11 +3,15 @@
 
 from __future__ import with_statement
 import datetime
+import os
+import random
 
 from fabric.api import *
 from fabric.colors import *
-from fabric.contrib.console import confirm
+from fabric.contrib import django
+from fabric.contrib.console import *
 from fabric.contrib.files import *
+from fabric.contrib.project import *
 from yaml import safe_load as load_yaml
 
 # import other mini-fabfiles for namespacing? (@task(default=True)) && __all__
@@ -34,6 +38,10 @@ env.user = _config['env']['user']
 env.webserver_software = _config['env']['webserver_software']
 env.db_software = _config['env']['db_software']
 env.live_url = _config['env']['live_url']
+# TODO: make local/remote upload dirs configurable
+env.local_uploads = os.path.join(env.real_fabfile, '..', 'uploads')
+# TODO: make local/remote static dirs configurable
+# TODO: support multiple django static file apps
 
 try:
     env.path = _config['env']['path'] % env
@@ -41,27 +49,21 @@ except:
     print red('The required app install path could not be parsed: %s' % _config['env']['path'])
     abort()
 
+WORDLIST_PATHS = [os.path.join('/', 'usr', 'share', 'dict', 'words')]
+
 # with lcd(''):
 # with path(''):
 # with settings(warn_only=True):
 #
 # confirm('text', default=True)
-# prompt('text', default='', validate=None)
 # require()
-# result.failed / result.return_code / result.succeeded
-# get(remote_path, local_path)
 # put(local_path, remote_path, use_sudo=False, mirror_local_mode=False, mode=None)
-# exists()
 # upload_template() ???
-# rsync_project() ??? # for things like user-uploaded content
 #
 # @hosts()
 # @roles()
 # @runs_once()
 # @with_settings(warn_only=True)
-#
-# http://docs.fabfile.org/en/1.2.0/api/contrib/django.html
-# fab -l
 
 # Helper Functions
 
@@ -109,6 +111,10 @@ def refresh_env():
         env.stage = server['stage']
     else:
         env.stage = 'prod'
+
+    django.settings_module('conf.%(stage)s.settings' % env)
+    from django.conf import settings
+    env.django_settings = settings
 
     if 'os' in server:
         env.os = server['os']
@@ -181,8 +187,8 @@ def sad():
                '$F $$$$$"                              ^b  ^$$$$b$       
                 '$W$$$$"                                'b@$$$$"         
                                                          ^$$$*  
-                            DANGER WILL ROBINSON!
-                                    ERROR!
+                             DANGER WILL ROBINSON!
+                                    DANGER!
     ''')
 
 def happy():
@@ -191,6 +197,25 @@ def happy():
 def unavailable():
     abort(yellow('* This task is not yet available. Skipping.'))
 
+# For use with production tasks that you don't want to accidentally call
+def protect(word_count=1):
+    """Prompt the user to enter random words to prevent doing something stupid."""
+
+    valid_wordlist_paths = [wp for wp in WORDLIST_PATHS if os.path.exists(wp)]
+
+    if not valid_wordlist_paths:
+        error('No wordlists found!')
+
+    with open(valid_wordlist_paths[0]) as wordlist_file:
+        words = wordlist_file.readlines()
+
+    warn('Are you sure you want to do this?')
+
+    for i in range(int(word_count)):
+        word = words[random.randint(0, len(words))].strip()
+        p_msg = '[%d/%d] Type "%s" to continue (^C quits):' % (i+1, word_count, word)
+        answer = prompt(p_msg, validate=r'^%s$' % word)
+
 # Tasks
 
 # TODO: docs, info, warn, error everywhere!
@@ -198,6 +223,7 @@ def unavailable():
 # TODO: more server types (cache, search, load balancer, worker, queue, mail)
 # TODO: assert roles and settings everywhere!
 # TODO: large server-farm support
+# TODO: handling file permissions
 
 info('Starting fabric script at %s' % env.datetime)
 
@@ -253,7 +279,7 @@ def create_user(prompt_for_username=False, sudoer=False):
     unavailable()
 
     if prompt_for_username:
-        # TODO: validate this username
+        # TODO: validate this username can exist on os
         username = prompt('What should the admin username on this server be?')
     else:
         username = env.project
@@ -384,12 +410,16 @@ def setup_new_project():
         if not exists('%(path)s/static' % env):
             run('cd %(path)s; mkdir static' % env)
 
+        if not exists('%(path)s/uploads' % env):
+            run('cd %(path)s; mkdir uploads' % env)
+
 # deploy
 @task
 def deploy():
     archive_project()
     upload_project()
     upload_secrets()
+    push_static()
     install_requirements()
     symlink_release()
     migrate_db()
@@ -441,6 +471,10 @@ def symlink_release():
         run('mv current previous')
         run('ln -s %(datetime)s current' % env)
 
+@task
+def reset_db():
+    unavailable()
+
 # migrate db
 @task
 def migrate_db():
@@ -451,13 +485,38 @@ def migrate_db():
 
 # sync static files
 @task
-def sync_static():
-    unavailable()
+def push_static():
+    # TODO: --dry-run first, with a prompt to continue?
+    rsync_project('%(path)s/static' % env, 'static/')
 
 # push db to live / pull db from live
 @task
 def pull_db():
     unavailable()
+
+    db_pass = None
+    for k in env.django_settings.DATABASES.keys():
+        if env.django_settings.DATABASES[k]['HOST'] == env.host:
+            db_pass = env.django_settings.DATABASES[k]['PASSWORD']
+            break
+
+    db_pass_string = ''
+    if db_pass is not None:
+        db_pass_string = '-p%s' % db_pass
+
+    # TODO: have configurable db user, db name, no pass required, etc
+    
+    if env.db_software == 'postgresql':
+        run('pg_dump -u%s %s %s > /tmp/fabric/%s-%s.db' % (
+            env.user,
+            db_pass_string,
+            env.project,
+            env.project,
+            env.datetime
+        ))
+        get('/tmp/fabric/%(project)s-%(datetime).db' % env, '/tmp/fabric/')
+    elif env.db_software == 'mysql':
+        pass
 
 @task
 def push_db():
@@ -466,11 +525,44 @@ def push_db():
 # push uploads to live / pull uploads from live
 @task
 def pull_uploads():
-    unavailable()
+    # Ripped from fabric's rsync_project function
+
+    # Honor SSH key(s)
+    key_string = ''
+    if env.key_filename:
+        keys = env.key_filename
+        # For ease of use, coerce stringish key filename into list
+        if not isinstance(env.key_filename, (list, tuple)):
+            keys = [keys]
+        key_string = '-i ' + ' -i '.join(keys)
+
+    # Honor nonstandard port
+    port_string = ('-p %s' % env.port) if (env.port != '22') else ''
+
+    # RSH
+    rsh_string = ''
+    if key_string or port_string:
+        rsh_string = '--rsh="ssh %s %s"' % (port_string, key_string)
+        
+    rsync_cmd = r"""rsync -rlptvhz %s %s@%s:%s %s""" % (
+        rsh_string,
+        env.user,
+        env.host,
+        '%(path)s/uploads/' % env,
+        env.local_uploads
+    )
+
+    # TODO: --dry-run first, with a prompt to continue?
+    print local(rsync_cmd, capture=False)
 
 @task
 def push_uploads():
-    unavailable()
+    result = local('test -d %(local_uploads)s' % env)
+    if result.failed:
+        error('The local uploads directory does not exist at: %(local_uploads)s' % env)
+
+    # TODO: --dry-run first, with a prompt to continue?
+    rsync_project('%(path)s/uploads' % env, env.local_uploads + '/')
 
 # reload webserver
 @task
@@ -496,3 +588,8 @@ def rollback():
             run('mv previous current')
 
     reload_webserver()
+
+# view tail of server logs
+@task
+def tailgun():
+    unavailable()
