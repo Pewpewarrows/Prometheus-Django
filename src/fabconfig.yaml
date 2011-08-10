@@ -7,10 +7,12 @@
 env:
     project: foobar
     user: root
+    # TODO: make this per-server:
     webserver_software: nginx # or apache
+    # TODO: make this per-server:
     db_software: postgresql # or mysql
-    path: /home/%(user)s/public_html/%(project)s
-    live_url: http://foobar.com
+    path: /home/%(project)s/public_html/%(project)s
+    live_url: foobar.com
 
 # deploy_type is for the kind of server environment it is
 #   - shell (default, for the common use-case)

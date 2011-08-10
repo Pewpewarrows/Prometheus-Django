@@ -5,7 +5,7 @@ def num_cpus():
         raise RuntimeError("No sysconf detected.")
     return os.sysconf("SC_NPROCESSORS_ONLN")
 
-bind = 'unix:/tmp/projectname_gunicorn.sock'
+bind = 'unix:/tmp/%(project)s_gunicorn.sock'
 backlog = 2048
 
 daemon = False
@@ -13,4 +13,6 @@ daemon = False
 workers = num_cpus() * 2 + 1
 preload_app = True
 
-pidfile = '/tmp/projectname_gunicorn.pid'
+pidfile = '/tmp/%(project)s_gunicorn.pid'
+
+# TODO: logfile, proc_name?, user?, group?

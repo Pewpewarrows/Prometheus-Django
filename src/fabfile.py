@@ -51,14 +51,10 @@ except:
 
 WORDLIST_PATHS = [os.path.join('/', 'usr', 'share', 'dict', 'words')]
 
-# with lcd(''):
-# with path(''):
 # with settings(warn_only=True):
 #
 # confirm('text', default=True)
 # require()
-# put(local_path, remote_path, use_sudo=False, mirror_local_mode=False, mode=None)
-# upload_template() ???
 #
 # @hosts()
 # @roles()
@@ -222,8 +218,13 @@ def protect(word_count=1):
 # TODO: account for deploy_type everywhere!
 # TODO: more server types (cache, search, load balancer, worker, queue, mail)
 # TODO: assert roles and settings everywhere!
-# TODO: large server-farm support
+# TODO: large server-farm support:
+#   - one machine, several roles, several types, several projects
+#   - several machines, each several roles, each a single type, each several projects
+#   - several machines, each a single role, multiple machines per type, each a single project
 # TODO: handling file permissions
+# TODO: race conditions when checking if files/dirs exist?
+# TODO: pidfiles and logs under project dir?
 
 info('Starting fabric script at %s' % env.datetime)
 
@@ -247,7 +248,7 @@ def check():
 
     info('Checking site status...')
 
-    if not '200 OK' in local('curl --silent -I "%s"' % env.live_url, capture=True):
+    if not '200 OK' in local('curl --silent -I "http://%s"' % env.live_url, capture=True):
         sad()
     else:
         happy()
@@ -256,7 +257,13 @@ def check():
 @task
 def setup_server():
     refresh_env()
+
+    # TODO: check if this server has already been setup?
     # TODO: allow customization for internal os package repo
+    # TODO: centralized logging / log rotation?
+    # TODO: monitoring software, like graphite / nagios / munin
+    # TODO: automated backups
+
     create_user(True, True)
     update_server()
     setup_general_server()
@@ -268,7 +275,7 @@ def setup_server():
     elif env.role == 'static':
         setup_static_server()
 
-    secure_server()
+    #secure_server()
     setup_server_configs()
     startup_server()
 
@@ -276,7 +283,6 @@ def setup_server():
 @task
 def create_user(prompt_for_username=False, sudoer=False):
     refresh_env()
-    unavailable()
 
     if prompt_for_username:
         # TODO: validate this username can exist on os
@@ -284,6 +290,9 @@ def create_user(prompt_for_username=False, sudoer=False):
     else:
         username = env.project
 
+    # TODO: copy over a sane default home dir?
+    #   /etc/skel/.ssh
+    # TODO: ssh keys
     sudo('adduser %s' % username)
     sudo('adduser %s %s' % (username, env.sudoers))
 
@@ -297,6 +306,7 @@ def secure_server():
 @task
 def update_server():
     refresh_env()
+
     if env.os == 'ubuntu':
         sudo('apt-get update')
         sudo('apt-get safe-upgrade')
@@ -305,19 +315,19 @@ def update_server():
 @task
 def setup_general_server():
     refresh_env()
+
     if env.os == 'ubuntu':
         sudo('apt-get remove -y apache2 apache2-mpm-prefork apache2-utils')
-        sudo('apt-get install -y build-essential python-dev python-setuptools')
+        sudo('apt-get install -y openssl-devel gpg make gcc build-essential python-dev python-setuptools')
 
     sudo('easy_install -U pip')
 
     sudo('pip install supervisor')
-    sudo('echo; if [ ! -f /etc/supervisord.conf ]; then echo_supervisord_conf > /etc/supervisord.conf; fi')
-    sudo('echo; if [ ! -d /etc/supervisor ]; then mkdir /etc/supervisor; fi')
 
 @task
 def setup_app_server():
     refresh_env()
+
     if env.webserver_software == 'nginx':
         if env.os == 'ubuntu':
             sudo('apt-get install -y nginx')
@@ -326,8 +336,6 @@ def setup_app_server():
             sudo('apt-get install -y apache2-mpm-worker apache2-utils')
             sudo('apt-get install -y libapache2-mod-wsgi')
 
-    # TODO: chef/puppet should handle the main nginx confs
-
     # virtualenvs
     sudo('pip install virtualenv')
     sudo('pip install virtualenvwrapper')
@@ -335,11 +343,10 @@ def setup_app_server():
 @task
 def setup_db_server():
     refresh_env()
-    unavailable()
 
     if env.db_software == 'postgresql':
         if env.os == 'ubuntu':
-            sudo('apt-get install -y postgresql')
+            sudo('apt-get install -y postgresql libpq-dev')
     elif env.db_software == 'mysql':
         if env.os == 'ubuntu':
             sudo('apt-get install -y mysql-server')
@@ -347,39 +354,60 @@ def setup_db_server():
 @task
 def setup_static_server():
     refresh_env()
+
     if env.os == 'ubuntu':
         sudo('apt-get install -y nginx')
-
-    # TODO: chef/puppet should handle the main nginx confs
 
 # setup global configs
 @task
 def setup_server_configs():
     refresh_env()
-    unavailable()
+
+    sudo('echo; if [ ! -f /etc/supervisord.conf ]; then echo_supervisord_conf > /etc/supervisord.conf; fi')
+    sudo('echo; if [ ! -d /etc/supervisor ]; then mkdir /etc/supervisor; fi')
+
+    put('conf/common/supervisord.conf', '/etc/supervisord.conf', use_sudo=True)
+    put('conf/common/supervisord-init', '/etc/init.d/supervisord', use_sudo=True)
+    sudo('chmod +x /etc/init.d/supervisord')
+    sudo('update-rc.d supervisord defaults')
+
+    if env.role == 'app' or env.role == 'static':
+        sudo('rm -rf /etc/nginx/sites-enabled/*')
+        sudo('rm -rf /etc/nginx/sites-available/*')
+        upload_template('conf/common/fastcgi_params', '/etc/nginx/', env, use_sudo=True)
+        upload_template('conf/common/mime.types', '/etc/nginx/', env, use_sudo=True)
+        upload_template('conf/common/nginx.conf', '/etc/nginx/', env, use_sudo=True)
+        upload_template('conf/common/nginx-default', '/etc/nginx/sites-available/default', env, use_sudo=True)
+    elif env.role == 'db':
+        pass
 
 # startup server software
 @task
 def startup_server():
     refresh_env()
-    unavailable()
 
-    sudo('/etc/init.d/supervisord start')
+    sudo('service supervisord start')
+    sudo('supervisorctl status')
 
     if env.role == 'app':
         if env.webserver_software == 'nginx':
-            sudo('/etc/init.d/nginx start')
+            sudo('service nginx start')
         elif env.webserver_software == 'apache':
             pass
     elif env.role == 'db':
-        pass
+        if env.db_software == 'postgresql':
+            sudo('service postgresql start')
+        elif env.db_software == 'mysql':
+            sudo('service mysql start')
     elif env.role == 'static':
-        sudo('/etc/init.d/nginx start')
+        sudo('service nginx start')
 
 # create project ready for deploy
 @task
 def setup_new_project():
     refresh_env()
+
+    # TODO: check that this project name hasn't been used before
     create_user()
     run('mkdir -p %s' % env.path)
 
@@ -406,12 +434,27 @@ def setup_new_project():
 
         if not exists('%(path)s/logs' % env):
             run('cd %(path)s; mkdir logs' % env)
+
+        # TODO: check for a stage specific config file
+        upload_template('conf/common/nginx-%(project)s' % env, '/etc/nginx/sites-available/%(project)s' % env, env, use_sudo=True)
+        sudo('ln -s /etc/nginx/sites-available/%(project)s /etc/nginx/sites-enabled/%(project)s' % env)
+        upload_template('conf/common/supervisor-%(project)s.conf' % env, '/etc/supervisor/%(project)s.conf' % env, env, use_sudo=True)
+    elif env.role == 'db':
+        run('echo \"CREATE DATABASE %(project)s ENCODING \'UTF8\';CREATE USER %(project)s WITH PASSWORD \'%(project)s\';GRANT ALL PRIVILEGES ON DATABASE %(project)s TO %(project)s;\" > /tmp/create_%(project)s_db.sql' % env)
+        sudo('su - postgres -c \"psql -f /tmp/create_%(project)s_db.sql\"' % env)
+        run('rm /tmp/create_%(project)s_db.sql' % env)
     elif env.role == 'static':
         if not exists('%(path)s/static' % env):
             run('cd %(path)s; mkdir static' % env)
 
+        # TODO: should these by on static, or their own server role?
+        # TODO: nginx config for serving uploads
         if not exists('%(path)s/uploads' % env):
             run('cd %(path)s; mkdir uploads' % env)
+
+        # TODO: check for a stage specific config file
+        upload_template('conf/common/nginx-%(project)s-static' % env, '/etc/nginx/sites-available/%(project)s-static' % env, env, use_sudo=True)
+        sudo('ln -s /etc/nginx/sites-available/%(project)s-static /etc/nginx/sites-enabled/%(project)s-static' % env)
 
 # deploy
 @task
@@ -425,6 +468,7 @@ def deploy():
     symlink_release()
     migrate_db()
     reload_webserver()
+    reload_gunicorn()
     check()
 
 # deploy version
@@ -459,9 +503,15 @@ def upload_secrets():
 # setup project release
 @task
 def install_requirements():
+    refresh_env()
+
     # TODO: account for custom pypi server (ala chishop)
+    # TODO: check for gunicorn in here!
     with prefix('workon %(project)s' % env):
-        run('pip install -r %(path)s/src/conf/common/requirements.txt')
+        run('pip install -r %(path)s/releases/%(datetime)s/src/conf/common/requirements.txt')
+
+        if exists('%(path)s/releases/%(datetime)s/src/conf/%(stage)s/requirements.txt'):
+            run('pip install -r %(path)s/releases/%(datetime)s/src/conf/%(stage)s/requirements.txt')
 
 @task
 def symlink_release():
@@ -479,8 +529,7 @@ def reset_db():
 # migrate db
 @task
 def migrate_db():
-    unavailable()
-
+    # TODO: ensure this is only run once overall
     run('python manage.py syncdb')
     run('python manage.py migrate')
 
@@ -593,6 +642,7 @@ def refresh_supervisord():
 @task
 def reload_gunicorn():
     refresh_env()
+
     if env.role != 'app':
         return
 
@@ -605,11 +655,12 @@ def reload_gunicorn():
 @task
 def reload_webserver():
     refresh_env()
+
     if env.role != 'app':
         return
 
     if env.webserver_software == 'nginx':
-        sudo('/etc/init.d/nginx reload')
+        sudo('service nginx reload')
 
 # restart webserver
 @task
