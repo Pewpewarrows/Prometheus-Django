@@ -41,7 +41,7 @@ env.live_url = _config['env']['live_url']
 # TODO: make local/remote upload dirs configurable
 env.local_uploads = os.path.join(env.real_fabfile, '..', 'uploads')
 # TODO: make local/remote static dirs configurable
-# TODO: support multiple django static file apps
+# TODO: support multiple django static file apps (not just mediagenerator)
 
 try:
     env.path = _config['env']['path'] % env
@@ -243,7 +243,7 @@ def clean_dependencies():
 
 @task
 def check():
-    '''Check that the home page of the site returns an HTTP 200.'''
+    """Check that the home page of the site returns an HTTP 200."""
 
     info('Checking site status...')
 
@@ -419,6 +419,7 @@ def deploy():
     archive_project()
     upload_project()
     upload_secrets()
+    generate_static()
     push_static()
     install_requirements()
     symlink_release()
@@ -483,11 +484,16 @@ def migrate_db():
     run('python manage.py syncdb')
     run('python manage.py migrate')
 
+# generate, compile, minify static files
+@task
+def generate_static():
+    local('python manage.py generatemedia')
+
 # sync static files
 @task
 def push_static():
     # TODO: --dry-run first, with a prompt to continue?
-    rsync_project('%(path)s/static' % env, 'static/')
+    rsync_project('%(path)s/static' % env, '_generated_media/')
 
 # push db to live / pull db from live
 @task
@@ -505,6 +511,12 @@ def pull_db():
         db_pass_string = '-p%s' % db_pass
 
     # TODO: have configurable db user, db name, no pass required, etc
+
+    django.settings_module('conf.local.settings')
+    from django.conf import settings as local_settings
+    
+    # Assumes only one db in your local secret_settings.py
+    local_db = local_settings.DATABASES.itervalues().next()
     
     if env.db_software == 'postgresql':
         run('pg_dump -u%s %s %s > /tmp/fabric/%s-%s.db' % (
@@ -512,9 +524,16 @@ def pull_db():
             db_pass_string,
             env.project,
             env.project,
-            env.datetime
+            env.datetime,
         ))
         get('/tmp/fabric/%(project)s-%(datetime).db' % env, '/tmp/fabric/')
+        local('psql -u%s -p%s %s < /tmp/fabric/%s-%s.db' % (
+            local_db['USERNAME'],
+            local_db['PASSWORD'],
+            local_db['NAME'],
+            env.project,
+            env.datetime,
+        ))
     elif env.db_software == 'mysql':
         pass
 
@@ -525,7 +544,7 @@ def push_db():
 # push uploads to live / pull uploads from live
 @task
 def pull_uploads():
-    # Ripped from fabric's rsync_project function
+    # Ripped in part from fabric's rsync_project function
 
     # Honor SSH key(s)
     key_string = ''
@@ -563,6 +582,24 @@ def push_uploads():
 
     # TODO: --dry-run first, with a prompt to continue?
     rsync_project('%(path)s/uploads' % env, env.local_uploads + '/')
+
+# refresh supervisord
+@task
+def refresh_supervisord():
+    sudo('supervisorctl reread')
+    sudo('supervisorctl update')
+
+# reload gunicorn
+@task
+def reload_gunicorn():
+    refresh_env()
+    if env.role != 'app':
+        return
+
+    # TODO: waiting for this to be fixed: https://github.com/benoitc/gunicorn/issues/219
+    #sudo('kill -HUP `cat /tmp/%(project)s_gunicorn.pid`')
+
+    sudo('supervisorctl restart %(project)s_gunicorn' % env)
 
 # reload webserver
 @task
