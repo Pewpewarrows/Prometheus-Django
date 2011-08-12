@@ -32,6 +32,7 @@ except IOError:
 servers = _config['servers']
 roles = _config['roles']
 
+# TODO: validate the vars obtained from the config file
 env.datetime = datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S')
 env.project = _config['env']['project']
 env.user = _config['env']['user']
@@ -95,9 +96,10 @@ def role(name):
 def refresh_env():
     # TODO: is there a way to get around having to put this at the top of every task?
     server = None
-    for s in servers:
-        if s['ip'] == env.host:
-            server = s
+    for k, v in servers.itervalues():
+        if v['ip'] == env.host:
+            server = v
+            env.server_name = k
             break
 
     if server is None:
@@ -215,9 +217,9 @@ def protect(word_count=1):
 # Tasks
 
 # TODO: docs, info, warn, error everywhere!
-# TODO: account for deploy_type everywhere!
-# TODO: more server types (cache, search, load balancer, worker, queue, mail)
+# TODO: account for deploy_type, stage, os everywhere!
 # TODO: assert roles and settings everywhere!
+# TODO: more server types (cache, search, load balancer, worker, queue, mail)
 # TODO: large server-farm support:
 #   - one machine, several roles, several types, several projects
 #   - several machines, each several roles, each a single type, each several projects
@@ -237,7 +239,7 @@ def lint():
 def test():
     unavailable()
 
-# find unused dependencies
+# find unused dependencies, updates available to existing requirements
 @task
 def clean_dependencies():
     unavailable()
@@ -259,14 +261,12 @@ def setup_server():
     refresh_env()
 
     # TODO: check if this server has already been setup?
+    #   - also, a confirmation before executing on an existing setup server?
     # TODO: allow customization for internal os package repo
-    # TODO: centralized logging / log rotation?
-    # TODO: monitoring software, like graphite / nagios / munin
-    # TODO: automated backups
 
-    create_user(True, True)
     update_server()
     setup_general_server()
+    create_user(True, True)
 
     if env.role == 'app':
         setup_app_server()
@@ -275,8 +275,8 @@ def setup_server():
     elif env.role == 'static':
         setup_static_server()
 
-    #secure_server()
     setup_server_configs()
+    #secure_server()
     startup_server()
 
 # create user/group, setup ssh keys
@@ -290,11 +290,15 @@ def create_user(prompt_for_username=False, sudoer=False):
     else:
         username = env.project
 
-    # TODO: copy over a sane default home dir?
-    #   /etc/skel/.ssh
-    # TODO: ssh keys
     sudo('adduser %s' % username)
     sudo('adduser %s %s' % (username, env.sudoers))
+
+    # SSH
+    ssh_key = prompt('Paste a public ssh key to access this server with the new user:')
+    sudo('-u %s mkdir /home/%s/.ssh' % (username, username))
+    sudo('-u %s touch /home/%s/.ssh/authorized_keys' % (username, username))
+    sudo('-u %s echo "%s" >> /home/%s/.ssh/authorized_keys' % (username, ssh_key, username))
+    sudo('chmod 0600 "/home/%s/.ssh/authorized_keys"' % username)
 
 # secure server
 @task
@@ -302,14 +306,30 @@ def secure_server():
     refresh_env()
     unavailable()
 
+    # /etc/sudoers
+    # TODO: disable root login, disable password login, enable ssh key login, only allow my users
+    # TODO: change ssh port to 31337
+    # TODO: install ufw, configure it, disallow port scans
+    # TODO: install DDOS prevention modules in webserver software
+    # TODO: runaway CPU/RAM/Disk monitor and killer?
+    # TODO: root's bash profile should e-mail sudoers everytime it's logged-in
+    # TODO: install logwatch/logcheck/logcheck-database/tripwire to watch for config file changes
+    # TODO: install fail2ban/denyhosts/denyhosts-remove for auto bans
+    # TODO: make webserver software not broadcast itself
+    # TODO: confirm critical file permissions and ownership
+    # TODO: log all terminal commands from all users, e-mail sudoers at the end of the week?
+    # TODO: e-mail an nmap of localhost every week to sudoers?
+
 # update os
 @task
 def update_server():
     refresh_env()
 
+    # TODO: just e-mail sudoers with updates instead of applying automatically, option?
+
     if env.os == 'ubuntu':
         sudo('apt-get update')
-        sudo('apt-get safe-upgrade')
+        sudo('apt-get safe-upgrade --show-upgraded')
 
 # install os packages
 @task
@@ -318,11 +338,31 @@ def setup_general_server():
 
     if env.os == 'ubuntu':
         sudo('apt-get remove -y apache2 apache2-mpm-prefork apache2-utils')
-        sudo('apt-get install -y openssl-devel gpg make gcc build-essential python-dev python-setuptools')
+        sudo('apt-get install -y wget vim less htop')
+        sudo('apt-get install -y openssl-devel gpg make gcc build-essential')
+        sudo('apt-get install -y python python-dev python-setuptools')
 
     sudo('easy_install -U pip')
-
     sudo('pip install supervisor')
+
+    sudo('dpkg-reconfigure locales')
+    sudo('update-locale LANG=en_US.UTF-8')
+
+    # Hostname
+    sudo('echo %(server_name)s > /etc/hostname' % env)
+    sudo('hostname -F /etc/hostname')
+    sudo('echo -e "\n127.0.0.1 %(server_name)s.local %(server_name)s\n" >> /etc/hosts' % env)
+
+    # TODO: set the timezone: http://library.linode.com/getting-started#sph_id16
+    # TODO: install qmail
+    # TODO: centralized logging / log rotation?
+    # TODO: monitoring software, like graphite / nagios / munin
+    # TODO: automated backups
+    # TODO: create a saner default home dir in /etc/skel?
+
+    # Time sync
+    sudo('echo -e "ntpdate ntp.ubuntu.com" > /etc/cron.daily/ntpdate')
+    sudo('chmod 755 /etc/cron.daily/ntpdate')
 
 @task
 def setup_app_server():
@@ -346,7 +386,7 @@ def setup_db_server():
 
     if env.db_software == 'postgresql':
         if env.os == 'ubuntu':
-            sudo('apt-get install -y postgresql libpq-dev')
+            sudo('apt-get install -y postgresql-contrib postgresql-dev postgresql-client libpq-dev')
     elif env.db_software == 'mysql':
         if env.os == 'ubuntu':
             sudo('apt-get install -y mysql-server')
@@ -440,9 +480,8 @@ def setup_new_project():
         sudo('ln -s /etc/nginx/sites-available/%(project)s /etc/nginx/sites-enabled/%(project)s' % env)
         upload_template('conf/common/supervisor-%(project)s.conf' % env, '/etc/supervisor/%(project)s.conf' % env, env, use_sudo=True)
     elif env.role == 'db':
-        run('echo \"CREATE DATABASE %(project)s ENCODING \'UTF8\';CREATE USER %(project)s WITH PASSWORD \'%(project)s\';GRANT ALL PRIVILEGES ON DATABASE %(project)s TO %(project)s;\" > /tmp/create_%(project)s_db.sql' % env)
-        sudo('su - postgres -c \"psql -f /tmp/create_%(project)s_db.sql\"' % env)
-        run('rm /tmp/create_%(project)s_db.sql' % env)
+        sudo('su - postgres -c "echo \'CREATE ROLE %(project)s WITH LOGIN ENCRYPTED PASSWORD \"%(project)s\";\' | psql"' % env)
+        sudo('-u postgres createdb --encoding=UTF8 --owner=%(project)s %(project)s' % env)
     elif env.role == 'static':
         if not exists('%(path)s/static' % env):
             run('cd %(path)s; mkdir static' % env)
@@ -467,8 +506,8 @@ def deploy():
     install_requirements()
     symlink_release()
     migrate_db()
-    reload_webserver()
     reload_gunicorn()
+    reload_webserver()
     check()
 
 # deploy version
@@ -480,6 +519,7 @@ def deploy_version():
 # archive project
 @task
 def archive_project():
+    # TODO: provide repo, branch options
     local('mkdir -p /tmp/fabric')
     local('git archive --format=tar master | gzip > /tmp/fabric/%(project)s-%(datetime)s.tar.gz' % env)
 
@@ -547,8 +587,6 @@ def push_static():
 # push db to live / pull db from live
 @task
 def pull_db():
-    unavailable()
-
     db_pass = None
     for k in env.django_settings.DATABASES.keys():
         if env.django_settings.DATABASES[k]['HOST'] == env.host:
@@ -585,6 +623,9 @@ def pull_db():
         ))
     elif env.db_software == 'mysql':
         pass
+
+    run('rm /tmp/fabric/%(project)s-%(datetime)s.db' % env)
+    local('rm /tmp/fabric/%(project)s-%(datetime)s.db' % env)
 
 @task
 def push_db():
@@ -665,7 +706,13 @@ def reload_webserver():
 # restart webserver
 @task
 def restart_webserver():
-    unavailable()
+    refresh_env()
+
+    if env.role != 'app':
+        return
+
+    if env.webserver_software == 'nginx':
+        sudo('service nginx restart')
 
 # rollback
 @task
@@ -675,6 +722,7 @@ def rollback():
             run('rm current')
             run('mv previous current')
 
+    reload_gunicorn()
     reload_webserver()
 
 # view tail of server logs

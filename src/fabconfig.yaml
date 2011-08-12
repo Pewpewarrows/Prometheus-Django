@@ -31,6 +31,7 @@ env:
 #   - fedora
 #   - rhel
 #   - osx
+#   - windows (lol. j/k.)
 # port is implied to be 22 unless otherwise specified (for ssh)
 # WARNING: DO NOT place your local machine here. Run at your own risk.
 # TODO: configure individual role, like for db (master, slave)
