@@ -463,8 +463,9 @@ def setup_new_project():
         if not exists('/home/%(project)s/.bashrc' % env):
             run('touch /home/%(project)s/.bashrc' % env)
 
+        run('echo "export DJANGO_SETTINGS_MODULE=\"src.conf.%(stage)s.settings\"" >> /home/%(project)s/.bashrc' % env)
         run('echo "export WORKON_HOME=/home/%(project)s/.virtualenvs" >> /home/%(project)s/.bashrc' % env)
-        run('echo "export source /usr/local/bin/virtualenvwrapper.sh" >> /home/%(project)s/.bashrc' % env)
+        run('echo "source /usr/local/bin/virtualenvwrapper.sh" >> /home/%(project)s/.bashrc' % env)
 
         with prefix('source /home/%(project)s/.bashrc' % env):
             run('mkvirtualenv --no-site-packages %(project)s' % env)
