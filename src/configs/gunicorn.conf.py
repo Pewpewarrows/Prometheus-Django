@@ -15,4 +15,6 @@ preload_app = True
 
 pidfile = '/tmp/%(project)s_gunicorn.pid'
 
-# TODO: logfile, proc_name?, user?, group?
+logfile = '/var/log/gunicorn/%(project)s_gunicorn.log'
+# TODO: logconfig for rotating?
+proc_name = '%(project)s_gunicorn'
