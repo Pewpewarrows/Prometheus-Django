@@ -226,7 +226,6 @@ def protect(word_count=1):
 #   - several machines, each a single role, multiple machines per type, each a single project
 # TODO: handling file permissions
 # TODO: race conditions when checking if files/dirs exist?
-# TODO: pidfiles and logs under project dir?
 
 info('Starting fabric script at %s' % env.datetime)
 
@@ -472,9 +471,6 @@ def setup_new_project():
 
         if not exists('%(path)s/releases' % env):
             run('cd %(path)s; mkdir releases' % env)
-
-        if not exists('%(path)s/logs' % env):
-            run('cd %(path)s; mkdir logs' % env)
 
         # TODO: check for a stage specific config file
         upload_template('conf/common/nginx-%(project)s' % env, '/etc/nginx/sites-available/%(project)s' % env, env, use_sudo=True)
