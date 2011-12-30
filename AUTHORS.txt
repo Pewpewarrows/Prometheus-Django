@@ -1,0 +1,18 @@
+=======
+Authors
+=======
+
+BDFL
+====
+
+Marco Chomut "Pewpewarrows"
+
+Contributors
+============
+
+n/a
+
+Thanks also to
+==============
+
+n/a

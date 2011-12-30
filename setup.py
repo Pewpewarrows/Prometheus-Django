@@ -5,12 +5,12 @@ use_setuptools()
 from setuptools import setup, find_packages
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
-README = open(os.path.join(ROOT, 'README')).read()
-CHANGELOG = open(os.path.join(ROOT, 'CHANGELOG')).read()
+README = open(os.path.join(ROOT, 'README.txt')).read()
+CHANGELOG = open(os.path.join(ROOT, 'CHANGELOG.txt')).read()
 
 setup(
     name='prometheus',
-    version='0.1',
+    version='0.0.1',
     description='Web development made easy',
     long_description=README + '\n\n' + CHANGELOG,
     # Get classifiers from http://pypi.python.org/pypi?%3Aaction=list_classifiers
@@ -28,9 +28,9 @@ setup(
     author='Marco Chomut "Pewpewarrows"',
     author_email='marco.chomut@gmail.com',
     url='http://prometheus-kiln.com/',
-    license='MIT',
-    packages=find_packages('src'),
-    package_dir={'': 'src'},
+    license='MIT', # TODO: 'LICENSE.txt' instead?
+    packages=find_packages('prometheus'),
+    package_dir={'': 'prometheus'},
     include_package_data=True,
     zip_safe=False,
     install_requires=[],
