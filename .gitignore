@@ -26,6 +26,7 @@ local.properties
 .classpath
 tags
 TAGS
+/*.sublime-project
 
 # Language
 
@@ -34,11 +35,13 @@ TAGS
 *.egg
 *.egg-info
 dist
+sdist
 build
 eggs
 parts
 bin
 develop-eggs
 .installed.cfg
+.coverage
 
 # Project
