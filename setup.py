@@ -9,7 +9,7 @@ README = open(os.path.join(ROOT, 'README.txt')).read()
 CHANGELOG = open(os.path.join(ROOT, 'CHANGELOG.txt')).read()
 
 setup(
-    name='prometheus',
+    name='promdjango',
     version='0.0.1',
     description='Web development made easy',
     long_description=README + '\n\n' + CHANGELOG,
@@ -28,9 +28,9 @@ setup(
     author='Marco Chomut "Pewpewarrows"',
     author_email='marco.chomut@gmail.com',
     url='http://prometheus-kiln.com/',
-    license='MIT', # TODO: 'LICENSE.txt' instead?
-    packages=find_packages('prometheus'),
-    package_dir={'': 'prometheus'},
+    license='MIT',  # TODO: 'LICENSE.txt' instead?
+    packages=find_packages('promdjango'),
+    package_dir={'': 'promdjango'},
     include_package_data=True,
     zip_safe=False,
     install_requires=[],
@@ -38,8 +38,8 @@ setup(
         'nose',
     ],
     entry_points={
-        'console_scripts': [
-            'prometheus=kiln:main',
-        ],
+        # 'console_scripts': [
+        #     'prometheus=kiln:main',
+        # ],
     },
 )

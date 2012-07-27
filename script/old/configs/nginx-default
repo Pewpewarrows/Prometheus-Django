@@ -1,0 +1,78 @@
+# Individual nginx server template
+
+# Gunicorn upstream
+#upstream projectname_gunicorn_server {
+    #server unix:/tmp/projectname_gunicorn.sock fail_timeout=0;
+    ## For a TCP configuration:
+    ## server 192.168.0.7:8000 fail_timeout=0;
+#}
+
+server {
+	# listen 80; ## listen for ipv4; this line is default and implied
+	# listen [::]:80 default ipv6only=on; ## listen for ipv6
+    # listen 80 default_server;
+    listen 80 default_server deferred; # For Linux
+
+    # If you need SSL:
+    # listen 443 default ssl;
+    # ssl_certificate /etc/ssl/certs/app.com.crt;
+    # ssl_certificate_key /etc/ssl/private/app.key;
+    #	ssl on;
+    #	ssl_session_timeout 5m;
+    #	ssl_protocols SSLv3 TLSv1;
+    #	ssl_ciphers ALL:!ADH:!EXPORT56:RC4+RSA:+HIGH:+MEDIUM:+LOW:+SSLv3:+EXP;
+    #	ssl_prefer_server_ciphers on;
+
+	# Make site accessible from http://localhost/
+    # Be sure to include the www
+	server_name localhost;
+
+    # access_log off; # for static files
+    access_log /var/log/nginx/default.access.log main;
+    error_log /var/log/nginx/default.error.log error;
+
+	root /usr/share/nginx/www;
+
+    # auth_basic "Restricted";
+    # auth_basic_user_file /usr/share/nginx/www/passwd;
+    
+    # for static files:
+    # expires max;
+
+    # opt-in to the future
+    # add_header "X-UA-Compatible" "IE=Edge,chrome=1";"
+
+    # Straight html
+	location / {
+		# First attempt to serve request as file, then
+		# as directory, then fall back to index.html
+		try_files $uri $uri/ /index.html;
+	}
+
+    # Static file serving:
+    #location ~ ^/(.*)$ {
+        #alias /usr/share/nginx/www/$1;
+        #autoindex off;
+    #}
+
+    # Gunicorn
+    #location / {
+        #proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        #proxy_set_header Host $http_host;
+        #proxy_redirect off;
+        ##proxy_set_header X-Real-IP $remote_addr;
+        ##proxy_set_header REMOTE_HOST $remote_addr;
+        ##proxy_set_header X-FORWARDED-PROTOCOL $scheme;
+        ## proxy_buffering off; # for comet
+
+        ## Check if it's a file before proxying?
+        #proxy_pass http://projectname_gunicorn_server;
+    #}
+
+	# deny access to .htaccess files, if Apache's document root
+	# concurs with nginx's one
+	#
+	#location ~ /\.ht {
+	#	deny all;
+	#}
+}

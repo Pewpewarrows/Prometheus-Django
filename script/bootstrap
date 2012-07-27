@@ -1,0 +1,48 @@
+#!/usr/bin/env sh
+
+curdir=${0%/*}
+source ${curdir}/bootstrap_lib.sh
+
+function Main__usage {
+    printf "
+Usage: ${0} [options]
+
+Options:
+    --test: Do something
+
+"
+}
+
+function Main__parse_args {
+    while true; do
+        case "$1" in
+            --help)
+                Main__usage
+                exit 1
+                ;;
+            --)
+                shift
+                break
+                ;;
+            *)
+                echo "$0: Unrecognized option \"$1\""
+                Main__usage
+                exit 1
+                ;;
+        esac
+    done
+}
+
+function Main__main {
+    # Main__parse_args "$@"
+
+    # Bootstrap__check_for_progs "python pythonbrew ruby"
+
+    Bootstrap__python_available
+    Bootstrap__pythonbrew_available
+    Bootstrap__in_virtualenv "promdjango"
+    Bootstrap__python_version "2.7.3"
+    Bootstrap__install_python_libs "develop"
+}
+
+Main__main "$@"

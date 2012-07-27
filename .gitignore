@@ -19,29 +19,40 @@ Desktop.ini
 *~
 *.sw[a-p]
 *.bak
-.project
-*.pydevproject
-.metadata
-local.properties
-.classpath
+# .project
+# *.pydevproject
+# .metadata
+# local.properties
+# .classpath
 tags
 TAGS
-/*.sublime-project
+# *.sublime-project
+# *.sublime-workspace
+
+# Build
+build
+bin
+res/static/gen
+eggs
+dist
+sdist
+# parts
+develop-eggs
+.installed.cfg
+lib
+lib64
+*.egg
+*.egg-info
+.coverage
 
 # Language
 
+# C extensions
+*.so
+
 # Python
-*.py[co]
-*.egg
-*.egg-info
-dist
-sdist
-build
-eggs
-parts
-bin
-develop-eggs
-.installed.cfg
-.coverage
+*.py[cod]
 
 # Project
+local_settings.py
+secret_settings.py
